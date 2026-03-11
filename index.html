@@ -108,13 +108,14 @@
 </head>
 <body>
   <main>
-    <h1>Keep Phone Awake (Low-Power)</h1>
+    <h1>Keep Phone Awake (Low-Power) - v1.1</h1>
     <p>
       Tap start. The page requests Screen Wake Lock and also runs a tiny fake video that can enter PiP on supported mobile browsers.
     </p>
 
     <div class="actions">
       <button id="startBtn">Start</button>
+      <button id="pipBtn" class="secondary" disabled>Open PiP</button>
       <button id="stopBtn" class="secondary" disabled>Stop</button>
     </div>
 
@@ -125,6 +126,7 @@
 
   <script>
     const startBtn = document.getElementById('startBtn');
+    const pipBtn = document.getElementById('pipBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusEl = document.getElementById('status');
     const fakeVideo = document.getElementById('fakeVideo');
@@ -175,9 +177,37 @@
       return fakeStream;
     }
 
+    async function waitForVideoReady(video, timeoutMs = 800) {
+      if (video.readyState >= 2) return;
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          video.removeEventListener('loadeddata', finish);
+          video.removeEventListener('canplay', finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, timeoutMs);
+        video.addEventListener('loadeddata', () => {
+          clearTimeout(timer);
+          finish();
+        }, { once: true });
+        video.addEventListener('canplay', () => {
+          clearTimeout(timer);
+          finish();
+        }, { once: true });
+      });
+    }
+
     async function startFakeVideoAndPiP() {
+      fakeVideo.autoplay = true;
+      fakeVideo.loop = true;
+      fakeVideo.disablePictureInPicture = false;
       fakeVideo.srcObject = createTinyFakeStream();
-      await fakeVideo.play();
+      const playPromise = fakeVideo.play();
+      await Promise.resolve(playPromise).catch(() => {});
+      await waitForVideoReady(fakeVideo);
 
       if ('pictureInPictureEnabled' in document && document.pictureInPictureEnabled) {
         if (document.pictureInPictureElement !== fakeVideo) {
@@ -186,7 +216,13 @@
         return true;
       }
 
-      if (typeof fakeVideo.webkitSetPresentationMode === 'function') {
+      if (
+        typeof fakeVideo.webkitSetPresentationMode === 'function' &&
+        (
+          typeof fakeVideo.webkitSupportsPresentationMode !== 'function' ||
+          fakeVideo.webkitSupportsPresentationMode('picture-in-picture')
+        )
+      ) {
         fakeVideo.webkitSetPresentationMode('picture-in-picture');
         return true;
       }
@@ -197,15 +233,15 @@
     async function start() {
       keepAwakeEnabled = true;
       startBtn.disabled = true;
+      pipBtn.disabled = false;
       stopBtn.disabled = false;
 
-      const wakeOk = await requestWakeLock();
-      let pipOk = false;
-      try {
-        pipOk = await startFakeVideoAndPiP();
-      } catch {
-        pipOk = false;
-      }
+      const pipPromise = startFakeVideoAndPiP()
+        .then(() => true)
+        .catch(() => false);
+      const wakePromise = requestWakeLock();
+
+      const [pipOk, wakeOk] = await Promise.all([pipPromise, wakePromise]);
 
       const lines = [];
       lines.push(wakeOk ? 'Wake Lock: active.' : 'Wake Lock: unavailable or blocked.');
@@ -218,6 +254,7 @@
     async function stop() {
       keepAwakeEnabled = false;
       startBtn.disabled = false;
+      pipBtn.disabled = true;
       stopBtn.disabled = true;
 
       if (wakeLockSentinel) {
@@ -250,6 +287,13 @@
     });
 
     startBtn.addEventListener('click', start);
+    pipBtn.addEventListener('click', async () => {
+      const pipOk = await startFakeVideoAndPiP().catch(() => false);
+      setStatus(
+        pipOk ? ['PiP: active.', 'Wake Lock state unchanged.'] : ['PiP start failed on this tap.', 'Try again or use another mobile browser.'],
+        pipOk ? 'ok' : 'warn'
+      );
+    });
     stopBtn.addEventListener('click', stop);
   </script>
 </body>
