@@ -126,7 +126,7 @@
 
     <div class="actions">
       <button id="startBtn">Start</button>
-      <button id="pipBtn" class="secondary" disabled>Open PiP</button>
+      <button id="pipBtn" class="secondary" disabled>Toggle PiP</button>
       <button id="stopBtn" class="secondary" disabled>Stop</button>
     </div>
 
@@ -145,8 +145,15 @@
     const statusEl = document.getElementById('status');
     const fakeVideo = document.getElementById('fakeVideo');
 
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
     let wakeLockSentinel = null;
     let fakeStream = null;
+    let fakeCanvas = null;
+    let fakeCtx = null;
+    let frameTicker = null;
+    let frameToggle = false;
     let recordedClipUrl = '';
     let keepAwakeEnabled = false;
 
@@ -159,6 +166,24 @@
       const std = 'pictureInPictureEnabled' in document;
       const safari = typeof fakeVideo.webkitSetPresentationMode === 'function';
       return std || safari;
+    }
+
+    function isInPiP() {
+      if (document.pictureInPictureElement === fakeVideo) return true;
+      if (typeof fakeVideo.webkitPresentationMode === 'string') {
+        return fakeVideo.webkitPresentationMode === 'picture-in-picture';
+      }
+      return false;
+    }
+
+    function setPipButton() {
+      if (!supportsPiP()) {
+        pipBtn.disabled = true;
+        pipBtn.textContent = 'PiP Unsupported';
+        return;
+      }
+      pipBtn.textContent = isInPiP() ? 'Close PiP' : 'Open PiP';
+      pipBtn.disabled = !keepAwakeEnabled;
     }
 
     async function requestWakeLock() {
@@ -182,13 +207,24 @@
 
     function createTinyFakeStream() {
       if (fakeStream) return fakeStream;
-      const canvas = document.createElement('canvas');
-      canvas.width = 2;
-      canvas.height = 2;
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, 2, 2);
-      fakeStream = canvas.captureStream(1);
+      fakeCanvas = document.createElement('canvas');
+      fakeCanvas.width = isIOS ? 160 : 2;
+      fakeCanvas.height = isIOS ? 90 : 2;
+      fakeCtx = fakeCanvas.getContext('2d', { alpha: false });
+      fakeCtx.fillStyle = '#000';
+      fakeCtx.fillRect(0, 0, fakeCanvas.width, fakeCanvas.height);
+
+      // Keep a very low-cost frame cadence so iOS keeps treating it as active video.
+      frameTicker = setInterval(() => {
+        if (!fakeCtx || !fakeCanvas) return;
+        frameToggle = !frameToggle;
+        fakeCtx.fillStyle = '#000';
+        fakeCtx.fillRect(0, 0, fakeCanvas.width, fakeCanvas.height);
+        fakeCtx.fillStyle = frameToggle ? '#010101' : '#000000';
+        fakeCtx.fillRect(0, 0, 1, 1);
+      }, 1000);
+
+      fakeStream = fakeCanvas.captureStream(1);
       return fakeStream;
     }
 
@@ -198,13 +234,19 @@
 
       const stream = createTinyFakeStream();
       const types = [
+        'video/mp4',
         'video/webm;codecs=vp9',
         'video/webm;codecs=vp8',
         'video/webm',
-        'video/mp4'
       ];
+      if (!isIOS) {
+        types.push('video/mp4');
+      } else {
+        // iOS PiP is more reliable with MP4 when available.
+        types.splice(1, 0, 'video/mp4;codecs=avc1.42E01E');
+      }
       const mimeType = types.find((t) => {
-        if (typeof MediaRecorder.isTypeSupported !== 'function') return t === 'video/webm';
+        if (typeof MediaRecorder.isTypeSupported !== 'function') return isIOS ? t === 'video/mp4' : t === 'video/webm';
         return MediaRecorder.isTypeSupported(t);
       }) || '';
 
@@ -223,8 +265,8 @@
         recorder.addEventListener('stop', resolve, { once: true });
       });
 
-      recorder.start(250);
-      await new Promise((r) => setTimeout(r, 900));
+      recorder.start(500);
+      await new Promise((r) => setTimeout(r, isIOS ? 2600 : 900));
       recorder.stop();
       await stopped;
 
@@ -256,6 +298,22 @@
       return false;
     }
 
+    async function exitPiP() {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        return true;
+      }
+      if (
+        typeof fakeVideo.webkitSetPresentationMode === 'function' &&
+        typeof fakeVideo.webkitPresentationMode === 'string' &&
+        fakeVideo.webkitPresentationMode === 'picture-in-picture'
+      ) {
+        fakeVideo.webkitSetPresentationMode('inline');
+        return true;
+      }
+      return false;
+    }
+
     async function waitForVideoReady(video, timeoutMs = 800) {
       if (video.readyState >= 2) return;
       await new Promise((resolve) => {
@@ -284,15 +342,26 @@
       fakeVideo.loop = true;
       fakeVideo.disablePictureInPicture = false;
       fakeVideo.src = '';
-      fakeVideo.srcObject = createTinyFakeStream();
 
-      await Promise.resolve(fakeVideo.play()).catch(() => {});
-      await waitForVideoReady(fakeVideo);
-      const pipFromStream = await requestPiP().catch(() => false);
-      if (pipFromStream) return true;
+      // On iOS, PiP is often rejected for MediaStream but works with file/blob-backed video.
+      if (!isIOS) {
+        fakeVideo.srcObject = createTinyFakeStream();
+        await Promise.resolve(fakeVideo.play()).catch(() => {});
+        await waitForVideoReady(fakeVideo);
+        const pipFromStream = await requestPiP().catch(() => false);
+        if (pipFromStream) return true;
+      }
 
       const clipUrl = await createRecordedClipUrl();
-      if (!clipUrl) return false;
+      if (!clipUrl) {
+        if (isIOS) {
+          fakeVideo.srcObject = createTinyFakeStream();
+          await Promise.resolve(fakeVideo.play()).catch(() => {});
+          await waitForVideoReady(fakeVideo);
+          return requestPiP();
+        }
+        return false;
+      }
 
       fakeVideo.srcObject = null;
       fakeVideo.src = clipUrl;
@@ -305,8 +374,8 @@
     async function start() {
       keepAwakeEnabled = true;
       startBtn.disabled = true;
-      pipBtn.disabled = false;
       stopBtn.disabled = false;
+      setPipButton();
 
       const pipPromise = startFakeVideoAndPiP()
         .then(() => true)
@@ -321,12 +390,12 @@
       lines.push('Tip: keep this tab open for best reliability.');
 
       setStatus(lines, wakeOk || pipOk ? 'ok' : 'warn');
+      setPipButton();
     }
 
     async function stop() {
       keepAwakeEnabled = false;
       startBtn.disabled = false;
-      pipBtn.disabled = true;
       stopBtn.disabled = true;
 
       if (wakeLockSentinel) {
@@ -348,8 +417,15 @@
         fakeStream.getTracks().forEach((t) => t.stop());
         fakeStream = null;
       }
+      if (frameTicker) {
+        clearInterval(frameTicker);
+        frameTicker = null;
+      }
+      fakeCanvas = null;
+      fakeCtx = null;
 
       setStatus('Stopped.');
+      setPipButton();
     }
 
     document.addEventListener('visibilitychange', async () => {
@@ -361,13 +437,28 @@
 
     startBtn.addEventListener('click', start);
     pipBtn.addEventListener('click', async () => {
-      const pipOk = await startFakeVideoAndPiP().catch(() => false);
+      if (!keepAwakeEnabled) return;
+
+      const currentlyInPiP = isInPiP();
+      const pipOk = currentlyInPiP
+        ? await exitPiP().catch(() => false)
+        : await startFakeVideoAndPiP().catch(() => false);
       setStatus(
-        pipOk ? ['PiP: active.', 'Wake Lock state unchanged.'] : ['PiP start failed on this tap.', 'Use the player PiP button in controls.'],
+        pipOk
+          ? [currentlyInPiP ? 'PiP: closed.' : 'PiP: active.', 'Wake Lock state unchanged.']
+          : ['PiP action failed on this tap.', 'Use the player PiP button in controls.'],
         pipOk ? 'ok' : 'warn'
       );
+      setPipButton();
     });
     stopBtn.addEventListener('click', stop);
+
+    fakeVideo.addEventListener('enterpictureinpicture', setPipButton);
+    fakeVideo.addEventListener('leavepictureinpicture', setPipButton);
+    if (typeof fakeVideo.webkitSetPresentationMode === 'function') {
+      fakeVideo.addEventListener('webkitpresentationmodechanged', setPipButton);
+    }
+    setPipButton();
   </script>
 </body>
 </html>
