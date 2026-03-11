@@ -179,6 +179,17 @@
       font-weight: 600;
     }
 
+    .mini-btn {
+      margin-left: 8px;
+      border: 1px solid #edcfa0;
+      background: #fff;
+      color: #8a5b18;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      min-height: 30px;
+      padding: 0 10px;
+    }
+
     .player {
       margin-top: 12px;
       border-radius: var(--radius);
@@ -231,16 +242,17 @@
 
     <div id="status" class="status">Idle.</div>
     <div id="fallbackBox" class="fallback">
-      In iOS Home Screen mode, PiP is limited by WebKit.
-      <a id="safariLink" href="#" target="_blank" rel="noopener noreferrer">Open in Safari for PiP</a>.
+      PiP is unavailable in iOS Home Screen mode.
+      <a id="safariLink" href="#" target="_blank" rel="noopener noreferrer">Open this URL in Safari</a>
+      <button id="copyUrlBtn" class="mini-btn" type="button">Copy URL</button>
     </div>
 
     <section id="playerBox" class="player" aria-live="polite">
-      <div class="player-head">Use the native PiP button if auto-PiP is blocked.</div>
+      <div id="playerHead" class="player-head">Use the native PiP button if auto-PiP is blocked.</div>
       <video id="fakeVideo" muted playsinline controls></video>
     </section>
 
-    <footer>Dev by Fonzi</footer>
+    <footer id="footerText">Dev by Fonzi</footer>
   </main>
 
   <script>
@@ -248,14 +260,19 @@
     const stopBtn = document.getElementById('stopBtn');
     const statusEl = document.getElementById('status');
     const playerBox = document.getElementById('playerBox');
+    const playerHead = document.getElementById('playerHead');
     const fakeVideo = document.getElementById('fakeVideo');
     const fallbackBox = document.getElementById('fallbackBox');
     const safariLink = document.getElementById('safariLink');
+    const copyUrlBtn = document.getElementById('copyUrlBtn');
+    const footerText = document.getElementById('footerText');
     const splash = document.getElementById('splash');
 
+    const APP_VERSION = '1.5.0';
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const isIOSStandalone = isIOS && isStandalone;
 
     let wakeLockSentinel = null;
     let fakeStream = null;
@@ -278,10 +295,12 @@
     }
 
     function updateStandaloneFallback() {
-      if (isIOS && isStandalone) {
+      if (isIOSStandalone) {
         fallbackBox.classList.add('visible');
+        playerHead.textContent = 'Video preview. PiP is not available in iOS Home Screen mode.';
       } else {
         fallbackBox.classList.remove('visible');
+        playerHead.textContent = 'Use the native PiP button if auto-PiP is blocked.';
       }
     }
 
@@ -422,7 +441,7 @@
         fakeVideo.srcObject = createTinyFakeStream();
         await Promise.resolve(fakeVideo.play()).catch(() => {});
         await waitForVideoReady(fakeVideo);
-        const pipOk = await requestPiP().catch(() => false);
+        const pipOk = isIOSStandalone ? false : await requestPiP().catch(() => false);
         if (pipOk) return true;
       }
 
@@ -433,12 +452,14 @@
         fakeVideo.currentTime = 0;
         await Promise.resolve(fakeVideo.play()).catch(() => {});
         await waitForVideoReady(fakeVideo);
+        if (isIOSStandalone) return false;
         return requestPiP().catch(() => false);
       }
 
       fakeVideo.srcObject = createTinyFakeStream();
       await Promise.resolve(fakeVideo.play()).catch(() => {});
       await waitForVideoReady(fakeVideo);
+      if (isIOSStandalone) return false;
       return requestPiP().catch(() => false);
     }
 
@@ -455,7 +476,11 @@
 
       const lines = [];
       lines.push(wakeOk ? 'Wake Lock: active.' : 'Wake Lock: unavailable or blocked.');
-      lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: blocked. Use the video player PiP button.' : 'PiP: not supported.'));
+      if (isIOSStandalone) {
+        lines.push('PiP: unavailable in iOS Home Screen mode. Open this URL in Safari.');
+      } else {
+        lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: blocked. Use the video player PiP button.' : 'PiP: not supported.'));
+      }
       lines.push('Keep this app open for best reliability.');
       setStatus(lines, wakeOk || pipOk ? 'ok' : 'warn');
     }
@@ -502,14 +527,19 @@
     startBtn.addEventListener('click', start);
     stopBtn.addEventListener('click', stop);
 
-    safariLink.href = window.location.href;
-    safariLink.addEventListener('click', (e) => {
-      if (!(isIOS && isStandalone)) return;
-      e.preventDefault();
-      window.open(window.location.href, '_blank');
+    const canonicalUrl = window.location.href;
+    safariLink.href = canonicalUrl;
+    copyUrlBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(canonicalUrl);
+        setStatus('URL copied. Paste it in Safari to use PiP.', 'ok');
+      } catch {
+        setStatus('Could not copy URL automatically. Copy it manually from the address bar.', 'warn');
+      }
     });
 
     updateStandaloneFallback();
+    footerText.textContent = `Dev by Fonzi · v${APP_VERSION}`;
 
     window.addEventListener('load', () => {
       setTimeout(() => {
