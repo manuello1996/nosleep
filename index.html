@@ -95,20 +95,31 @@
     .ok { color: var(--ok); }
     .warn { color: var(--warn); }
 
+    .player {
+      margin-top: 14px;
+      border: 1px solid #292929;
+      border-radius: 10px;
+      background: #0f0f0f;
+      padding: 10px;
+    }
+
+    .player p {
+      margin-bottom: 8px;
+      font-size: 0.88rem;
+    }
+
     video {
-      position: fixed;
-      width: 2px;
-      height: 2px;
-      left: 0;
-      bottom: 0;
-      opacity: 0.01;
-      pointer-events: none;
+      width: 100%;
+      max-width: 240px;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      background: #000;
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>Keep Phone Awake (Low-Power) - v1.1</h1>
+    <h1>Keep Phone Awake (Low-Power) - v1.2</h1>
     <p>
       Tap start. The page requests Screen Wake Lock and also runs a tiny fake video that can enter PiP on supported mobile browsers.
     </p>
@@ -120,9 +131,12 @@
     </div>
 
     <div id="status" class="status">Idle.</div>
-  </main>
 
-  <video id="fakeVideo" muted playsinline></video>
+    <div class="player">
+      <p>Backup: use the video controls PiP button if auto PiP is blocked.</p>
+      <video id="fakeVideo" muted playsinline controls></video>
+    </div>
+  </main>
 
   <script>
     const startBtn = document.getElementById('startBtn');
@@ -133,6 +147,7 @@
 
     let wakeLockSentinel = null;
     let fakeStream = null;
+    let recordedClipUrl = '';
     let keepAwakeEnabled = false;
 
     function setStatus(lines, tone = '') {
@@ -177,6 +192,70 @@
       return fakeStream;
     }
 
+    async function createRecordedClipUrl() {
+      if (recordedClipUrl) return recordedClipUrl;
+      if (!('MediaRecorder' in window)) return '';
+
+      const stream = createTinyFakeStream();
+      const types = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
+      const mimeType = types.find((t) => {
+        if (typeof MediaRecorder.isTypeSupported !== 'function') return t === 'video/webm';
+        return MediaRecorder.isTypeSupported(t);
+      }) || '';
+
+      let recorder;
+      try {
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch {
+        return '';
+      }
+
+      const chunks = [];
+      const stopped = new Promise((resolve) => {
+        recorder.addEventListener('dataavailable', (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        });
+        recorder.addEventListener('stop', resolve, { once: true });
+      });
+
+      recorder.start(250);
+      await new Promise((r) => setTimeout(r, 900));
+      recorder.stop();
+      await stopped;
+
+      if (!chunks.length) return '';
+      const blobType = mimeType || chunks[0].type || 'video/webm';
+      recordedClipUrl = URL.createObjectURL(new Blob(chunks, { type: blobType }));
+      return recordedClipUrl;
+    }
+
+    async function requestPiP() {
+      if ('pictureInPictureEnabled' in document && document.pictureInPictureEnabled) {
+        if (document.pictureInPictureElement !== fakeVideo) {
+          await fakeVideo.requestPictureInPicture();
+        }
+        return true;
+      }
+
+      if (
+        typeof fakeVideo.webkitSetPresentationMode === 'function' &&
+        (
+          typeof fakeVideo.webkitSupportsPresentationMode !== 'function' ||
+          fakeVideo.webkitSupportsPresentationMode('picture-in-picture')
+        )
+      ) {
+        fakeVideo.webkitSetPresentationMode('picture-in-picture');
+        return true;
+      }
+
+      return false;
+    }
+
     async function waitForVideoReady(video, timeoutMs = 800) {
       if (video.readyState >= 2) return;
       await new Promise((resolve) => {
@@ -204,30 +283,23 @@
       fakeVideo.autoplay = true;
       fakeVideo.loop = true;
       fakeVideo.disablePictureInPicture = false;
+      fakeVideo.src = '';
       fakeVideo.srcObject = createTinyFakeStream();
-      const playPromise = fakeVideo.play();
-      await Promise.resolve(playPromise).catch(() => {});
+
+      await Promise.resolve(fakeVideo.play()).catch(() => {});
       await waitForVideoReady(fakeVideo);
+      const pipFromStream = await requestPiP().catch(() => false);
+      if (pipFromStream) return true;
 
-      if ('pictureInPictureEnabled' in document && document.pictureInPictureEnabled) {
-        if (document.pictureInPictureElement !== fakeVideo) {
-          await fakeVideo.requestPictureInPicture();
-        }
-        return true;
-      }
+      const clipUrl = await createRecordedClipUrl();
+      if (!clipUrl) return false;
 
-      if (
-        typeof fakeVideo.webkitSetPresentationMode === 'function' &&
-        (
-          typeof fakeVideo.webkitSupportsPresentationMode !== 'function' ||
-          fakeVideo.webkitSupportsPresentationMode('picture-in-picture')
-        )
-      ) {
-        fakeVideo.webkitSetPresentationMode('picture-in-picture');
-        return true;
-      }
-
-      return false;
+      fakeVideo.srcObject = null;
+      fakeVideo.src = clipUrl;
+      fakeVideo.currentTime = 0;
+      await Promise.resolve(fakeVideo.play()).catch(() => {});
+      await waitForVideoReady(fakeVideo);
+      return requestPiP();
     }
 
     async function start() {
@@ -245,7 +317,7 @@
 
       const lines = [];
       lines.push(wakeOk ? 'Wake Lock: active.' : 'Wake Lock: unavailable or blocked.');
-      lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: supported but failed (interaction/browser policy).' : 'PiP: not supported on this browser.'));
+      lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: auto start blocked. Use player PiP button.' : 'PiP: not supported on this browser.'));
       lines.push('Tip: keep this tab open for best reliability.');
 
       setStatus(lines, wakeOk || pipOk ? 'ok' : 'warn');
@@ -269,6 +341,7 @@
       try {
         fakeVideo.pause();
         fakeVideo.srcObject = null;
+        fakeVideo.src = '';
       } catch {}
 
       if (fakeStream) {
@@ -290,7 +363,7 @@
     pipBtn.addEventListener('click', async () => {
       const pipOk = await startFakeVideoAndPiP().catch(() => false);
       setStatus(
-        pipOk ? ['PiP: active.', 'Wake Lock state unchanged.'] : ['PiP start failed on this tap.', 'Try again or use another mobile browser.'],
+        pipOk ? ['PiP: active.', 'Wake Lock state unchanged.'] : ['PiP start failed on this tap.', 'Use the player PiP button in controls.'],
         pipOk ? 'ok' : 'warn'
       );
     });
