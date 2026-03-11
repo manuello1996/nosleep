@@ -1,148 +1,178 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0b">
-  <title>No Sleep PiP</title>
+  <meta name="theme-color" content="#f2f2f7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="NoSleep PiP">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>NoSleep PiP</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
   <style>
     :root {
-      --bg: #0b0b0b;
-      --card: #151515;
-      --text: #f2f2f2;
-      --muted: #a8a8a8;
-      --ok: #4ade80;
-      --warn: #fbbf24;
-      --btn: #f2f2f2;
-      --btn-text: #0b0b0b;
+      --bg: #f2f2f7;
+      --card: #ffffffcc;
+      --stroke: #d1d1d6;
+      --text: #111111;
+      --muted: #636366;
+      --tint: #007aff;
+      --danger: #ff3b30;
+      --ok: #34c759;
+      --shadow: 0 12px 30px #00000014;
+      --radius: 22px;
     }
 
     * { box-sizing: border-box; }
 
+    html, body { height: 100%; }
+
     body {
       margin: 0;
-      min-height: 100dvh;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: radial-gradient(circle at top, #1b1b1b 0, var(--bg) 55%);
+      font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--text);
+      background:
+        radial-gradient(1200px 800px at 0% -20%, #dbe9ff 0%, transparent 45%),
+        radial-gradient(1000px 700px at 100% -10%, #ffe7ef 0%, transparent 50%),
+        var(--bg);
+      min-height: 100dvh;
       display: grid;
       place-items: center;
-      padding: 20px;
+      padding: 20px 16px calc(env(safe-area-inset-bottom) + 20px);
     }
 
-    main {
-      width: min(560px, 100%);
-      background: color-mix(in oklab, var(--card), black 8%);
-      border: 1px solid #2a2a2a;
-      border-radius: 16px;
-      padding: 20px;
+    .app {
+      width: min(540px, 100%);
+      background: var(--card);
+      backdrop-filter: blur(14px) saturate(1.2);
+      border: 1px solid #ffffff80;
+      border-radius: 30px;
+      box-shadow: var(--shadow);
+      padding: 22px;
     }
 
     h1 {
-      margin: 0 0 8px;
-      font-size: clamp(1.3rem, 3.8vw, 1.8rem);
-      line-height: 1.2;
+      margin: 0;
+      font-size: clamp(1.45rem, 5.6vw, 2rem);
+      letter-spacing: -0.02em;
+      line-height: 1.1;
     }
 
-    p {
-      margin: 0;
+    .subtitle {
+      margin: 10px 0 0;
       color: var(--muted);
+      font-size: 0.98rem;
       line-height: 1.45;
     }
 
     .actions {
-      display: flex;
-      gap: 10px;
       margin-top: 18px;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
 
     button {
-      appearance: none;
       border: none;
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-size: 0.98rem;
-      font-weight: 600;
+      border-radius: 14px;
+      min-height: 48px;
+      padding: 0 14px;
+      font-size: 1rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
       cursor: pointer;
-      background: var(--btn);
-      color: var(--btn-text);
+      transition: transform 120ms ease, opacity 120ms ease, filter 120ms ease;
     }
 
-    button.secondary {
-      background: #2a2a2a;
-      color: var(--text);
-      border: 1px solid #3c3c3c;
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    #startBtn {
+      background: var(--tint);
+      color: #fff;
     }
 
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    #stopBtn {
+      background: #fff;
+      color: var(--danger);
+      border: 1px solid #ffd2cf;
     }
 
     .status {
-      margin-top: 14px;
-      border-radius: 10px;
-      background: #111;
-      border: 1px solid #292929;
+      margin-top: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--stroke);
+      background: #fff;
       padding: 10px 12px;
       font-size: 0.93rem;
-      line-height: 1.4;
       color: var(--muted);
       white-space: pre-line;
     }
 
-    .ok { color: var(--ok); }
-    .warn { color: var(--warn); }
+    .status.ok { color: #1f7a3e; border-color: #caeed6; }
+    .status.warn { color: #925c1f; border-color: #f6dfb8; }
 
     .player {
-      margin-top: 14px;
-      border: 1px solid #292929;
-      border-radius: 10px;
-      background: #0f0f0f;
-      padding: 10px;
+      margin-top: 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--stroke);
+      background: #fff;
+      overflow: hidden;
+      display: none;
     }
 
-    .player p {
-      margin-bottom: 8px;
-      font-size: 0.88rem;
+    .player.visible { display: block; }
+
+    .player-head {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid #efeff4;
+      color: var(--muted);
+      font-size: 0.86rem;
     }
 
     video {
+      display: block;
       width: 100%;
-      max-width: 240px;
       aspect-ratio: 16 / 9;
-      border-radius: 8px;
       background: #000;
+    }
+
+    footer {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted);
     }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Keep Phone Awake (Low-Power) - v1.2</h1>
-    <p>
-      Tap start. The page requests Screen Wake Lock and also runs a tiny fake video that can enter PiP on supported mobile browsers.
-    </p>
+  <main class="app">
+    <h1>Keep Awake</h1>
+    <p class="subtitle">Start keeps the phone awake with Wake Lock + lightweight PiP-capable dummy video.</p>
 
     <div class="actions">
       <button id="startBtn">Start</button>
-      <button id="pipBtn" class="secondary" disabled>Toggle PiP</button>
-      <button id="stopBtn" class="secondary" disabled>Stop</button>
+      <button id="stopBtn" disabled>Stop</button>
     </div>
 
     <div id="status" class="status">Idle.</div>
 
-    <div class="player">
-      <p>Backup: use the video controls PiP button if auto PiP is blocked.</p>
+    <section id="playerBox" class="player" aria-live="polite">
+      <div class="player-head">Use the native PiP button if auto-PiP is blocked.</div>
       <video id="fakeVideo" muted playsinline controls></video>
-    </div>
+    </section>
+
+    <footer>Dev by Fonzi</footer>
   </main>
 
   <script>
     const startBtn = document.getElementById('startBtn');
-    const pipBtn = document.getElementById('pipBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusEl = document.getElementById('status');
+    const playerBox = document.getElementById('playerBox');
     const fakeVideo = document.getElementById('fakeVideo');
 
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -168,24 +198,6 @@
       return std || safari;
     }
 
-    function isInPiP() {
-      if (document.pictureInPictureElement === fakeVideo) return true;
-      if (typeof fakeVideo.webkitPresentationMode === 'string') {
-        return fakeVideo.webkitPresentationMode === 'picture-in-picture';
-      }
-      return false;
-    }
-
-    function setPipButton() {
-      if (!supportsPiP()) {
-        pipBtn.disabled = true;
-        pipBtn.textContent = 'PiP Unsupported';
-        return;
-      }
-      pipBtn.textContent = isInPiP() ? 'Close PiP' : 'Open PiP';
-      pipBtn.disabled = !keepAwakeEnabled;
-    }
-
     async function requestWakeLock() {
       if (!('wakeLock' in navigator)) return false;
       try {
@@ -194,8 +206,8 @@
           wakeLockSentinel = null;
           if (keepAwakeEnabled) {
             setStatus([
-              'Wake lock released by the browser/OS.',
-              'PiP video can still help on supported devices.'
+              'Wake Lock released by browser/OS.',
+              'PiP may still keep activity on supported devices.'
             ], 'warn');
           }
         });
@@ -207,6 +219,7 @@
 
     function createTinyFakeStream() {
       if (fakeStream) return fakeStream;
+
       fakeCanvas = document.createElement('canvas');
       fakeCanvas.width = isIOS ? 160 : 2;
       fakeCanvas.height = isIOS ? 90 : 2;
@@ -214,7 +227,6 @@
       fakeCtx.fillStyle = '#000';
       fakeCtx.fillRect(0, 0, fakeCanvas.width, fakeCanvas.height);
 
-      // Keep a very low-cost frame cadence so iOS keeps treating it as active video.
       frameTicker = setInterval(() => {
         if (!fakeCtx || !fakeCanvas) return;
         frameToggle = !frameToggle;
@@ -233,18 +245,9 @@
       if (!('MediaRecorder' in window)) return '';
 
       const stream = createTinyFakeStream();
-      const types = [
-        'video/mp4',
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-      ];
-      if (!isIOS) {
-        types.push('video/mp4');
-      } else {
-        // iOS PiP is more reliable with MP4 when available.
-        types.splice(1, 0, 'video/mp4;codecs=avc1.42E01E');
-      }
+      const types = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+      if (isIOS) types.splice(1, 0, 'video/mp4;codecs=avc1.42E01E');
+
       const mimeType = types.find((t) => {
         if (typeof MediaRecorder.isTypeSupported !== 'function') return isIOS ? t === 'video/mp4' : t === 'video/webm';
         return MediaRecorder.isTypeSupported(t);
@@ -283,7 +286,6 @@
         }
         return true;
       }
-
       if (
         typeof fakeVideo.webkitSetPresentationMode === 'function' &&
         (
@@ -294,103 +296,81 @@
         fakeVideo.webkitSetPresentationMode('picture-in-picture');
         return true;
       }
-
       return false;
     }
 
     async function exitPiP() {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
-        return true;
-      }
-      if (
+      } else if (
         typeof fakeVideo.webkitSetPresentationMode === 'function' &&
-        typeof fakeVideo.webkitPresentationMode === 'string' &&
         fakeVideo.webkitPresentationMode === 'picture-in-picture'
       ) {
         fakeVideo.webkitSetPresentationMode('inline');
-        return true;
       }
-      return false;
     }
 
-    async function waitForVideoReady(video, timeoutMs = 800) {
+    async function waitForVideoReady(video, timeoutMs = 900) {
       if (video.readyState >= 2) return;
       await new Promise((resolve) => {
         let done = false;
         const finish = () => {
           if (done) return;
           done = true;
-          video.removeEventListener('loadeddata', finish);
-          video.removeEventListener('canplay', finish);
           resolve();
         };
         const timer = setTimeout(finish, timeoutMs);
-        video.addEventListener('loadeddata', () => {
-          clearTimeout(timer);
-          finish();
-        }, { once: true });
-        video.addEventListener('canplay', () => {
-          clearTimeout(timer);
-          finish();
-        }, { once: true });
+        video.addEventListener('loadeddata', () => { clearTimeout(timer); finish(); }, { once: true });
+        video.addEventListener('canplay', () => { clearTimeout(timer); finish(); }, { once: true });
       });
     }
 
-    async function startFakeVideoAndPiP() {
+    async function startVideoAndTryPiP() {
       fakeVideo.autoplay = true;
       fakeVideo.loop = true;
       fakeVideo.disablePictureInPicture = false;
       fakeVideo.src = '';
 
-      // On iOS, PiP is often rejected for MediaStream but works with file/blob-backed video.
       if (!isIOS) {
         fakeVideo.srcObject = createTinyFakeStream();
         await Promise.resolve(fakeVideo.play()).catch(() => {});
         await waitForVideoReady(fakeVideo);
-        const pipFromStream = await requestPiP().catch(() => false);
-        if (pipFromStream) return true;
+        const pipOk = await requestPiP().catch(() => false);
+        if (pipOk) return true;
       }
 
       const clipUrl = await createRecordedClipUrl();
-      if (!clipUrl) {
-        if (isIOS) {
-          fakeVideo.srcObject = createTinyFakeStream();
-          await Promise.resolve(fakeVideo.play()).catch(() => {});
-          await waitForVideoReady(fakeVideo);
-          return requestPiP();
-        }
-        return false;
+      if (clipUrl) {
+        fakeVideo.srcObject = null;
+        fakeVideo.src = clipUrl;
+        fakeVideo.currentTime = 0;
+        await Promise.resolve(fakeVideo.play()).catch(() => {});
+        await waitForVideoReady(fakeVideo);
+        return requestPiP().catch(() => false);
       }
 
-      fakeVideo.srcObject = null;
-      fakeVideo.src = clipUrl;
-      fakeVideo.currentTime = 0;
+      fakeVideo.srcObject = createTinyFakeStream();
       await Promise.resolve(fakeVideo.play()).catch(() => {});
       await waitForVideoReady(fakeVideo);
-      return requestPiP();
+      return requestPiP().catch(() => false);
     }
 
     async function start() {
       keepAwakeEnabled = true;
       startBtn.disabled = true;
       stopBtn.disabled = false;
-      setPipButton();
+      playerBox.classList.add('visible');
 
-      const pipPromise = startFakeVideoAndPiP()
-        .then(() => true)
-        .catch(() => false);
-      const wakePromise = requestWakeLock();
-
-      const [pipOk, wakeOk] = await Promise.all([pipPromise, wakePromise]);
+      const [pipOk, wakeOk] = await Promise.all([
+        startVideoAndTryPiP().catch(() => false),
+        requestWakeLock()
+      ]);
 
       const lines = [];
       lines.push(wakeOk ? 'Wake Lock: active.' : 'Wake Lock: unavailable or blocked.');
-      lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: auto start blocked. Use player PiP button.' : 'PiP: not supported on this browser.'));
-      lines.push('Tip: keep this tab open for best reliability.');
-
+      lines.push(pipOk ? 'PiP: active.' : (supportsPiP() ? 'PiP: blocked. Use the video player PiP button.' : 'PiP: not supported.'));
+      lines.push('Keep this app open for best reliability.');
       setStatus(lines, wakeOk || pipOk ? 'ok' : 'warn');
-      setPipButton();
     }
 
     async function stop() {
@@ -403,9 +383,7 @@
         wakeLockSentinel = null;
       }
 
-      if (document.pictureInPictureElement) {
-        try { await document.exitPictureInPicture(); } catch {}
-      }
+      await exitPiP().catch(() => {});
 
       try {
         fakeVideo.pause();
@@ -423,9 +401,8 @@
       }
       fakeCanvas = null;
       fakeCtx = null;
-
+      playerBox.classList.remove('visible');
       setStatus('Stopped.');
-      setPipButton();
     }
 
     document.addEventListener('visibilitychange', async () => {
@@ -436,29 +413,13 @@
     });
 
     startBtn.addEventListener('click', start);
-    pipBtn.addEventListener('click', async () => {
-      if (!keepAwakeEnabled) return;
-
-      const currentlyInPiP = isInPiP();
-      const pipOk = currentlyInPiP
-        ? await exitPiP().catch(() => false)
-        : await startFakeVideoAndPiP().catch(() => false);
-      setStatus(
-        pipOk
-          ? [currentlyInPiP ? 'PiP: closed.' : 'PiP: active.', 'Wake Lock state unchanged.']
-          : ['PiP action failed on this tap.', 'Use the player PiP button in controls.'],
-        pipOk ? 'ok' : 'warn'
-      );
-      setPipButton();
-    });
     stopBtn.addEventListener('click', stop);
 
-    fakeVideo.addEventListener('enterpictureinpicture', setPipButton);
-    fakeVideo.addEventListener('leavepictureinpicture', setPipButton);
-    if (typeof fakeVideo.webkitSetPresentationMode === 'function') {
-      fakeVideo.addEventListener('webkitpresentationmodechanged', setPipButton);
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
     }
-    setPipButton();
   </script>
 </body>
 </html>
