@@ -54,6 +54,49 @@
       padding: 22px;
     }
 
+    .splash {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(900px 620px at 0% 0%, #dbe9ff 0%, transparent 45%),
+        radial-gradient(800px 580px at 100% 0%, #ffe7ef 0%, transparent 48%),
+        #f2f2f7;
+      transition: opacity 360ms ease, visibility 360ms ease;
+    }
+
+    .splash.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .splash-card {
+      text-align: center;
+      background: #ffffffc7;
+      border: 1px solid #ffffff90;
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 20px 22px;
+      backdrop-filter: blur(10px);
+    }
+
+    .splash-logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      margin: 0 auto 10px;
+      background: linear-gradient(145deg, #5ac8fa, #007aff 60%, #1d39ff);
+      color: #fff;
+      font-size: 1.5rem;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
     h1 {
       margin: 0;
       font-size: clamp(1.45rem, 5.6vw, 2rem);
@@ -115,6 +158,27 @@
     .status.ok { color: #1f7a3e; border-color: #caeed6; }
     .status.warn { color: #925c1f; border-color: #f6dfb8; }
 
+    .fallback {
+      margin-top: 12px;
+      border-radius: 14px;
+      border: 1px solid #ffd6a3;
+      background: #fff9ef;
+      padding: 10px 12px;
+      color: #8a5b18;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      display: none;
+    }
+
+    .fallback.visible { display: block; }
+
+    .fallback a {
+      color: #0056d6;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      font-weight: 600;
+    }
+
     .player {
       margin-top: 12px;
       border-radius: var(--radius);
@@ -149,6 +213,13 @@
   </style>
 </head>
 <body>
+  <div id="splash" class="splash" aria-hidden="true">
+    <div class="splash-card">
+      <div class="splash-logo">NS</div>
+      <strong>NoSleep PiP</strong>
+    </div>
+  </div>
+
   <main class="app">
     <h1>Keep Awake</h1>
     <p class="subtitle">Start keeps the phone awake with Wake Lock + lightweight PiP-capable dummy video.</p>
@@ -159,6 +230,10 @@
     </div>
 
     <div id="status" class="status">Idle.</div>
+    <div id="fallbackBox" class="fallback">
+      In iOS Home Screen mode, PiP is limited by WebKit.
+      <a id="safariLink" href="#" target="_blank" rel="noopener noreferrer">Open in Safari for PiP</a>.
+    </div>
 
     <section id="playerBox" class="player" aria-live="polite">
       <div class="player-head">Use the native PiP button if auto-PiP is blocked.</div>
@@ -174,9 +249,13 @@
     const statusEl = document.getElementById('status');
     const playerBox = document.getElementById('playerBox');
     const fakeVideo = document.getElementById('fakeVideo');
+    const fallbackBox = document.getElementById('fallbackBox');
+    const safariLink = document.getElementById('safariLink');
+    const splash = document.getElementById('splash');
 
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
     let wakeLockSentinel = null;
     let fakeStream = null;
@@ -196,6 +275,14 @@
       const std = 'pictureInPictureEnabled' in document;
       const safari = typeof fakeVideo.webkitSetPresentationMode === 'function';
       return std || safari;
+    }
+
+    function updateStandaloneFallback() {
+      if (isIOS && isStandalone) {
+        fallbackBox.classList.add('visible');
+      } else {
+        fallbackBox.classList.remove('visible');
+      }
     }
 
     async function requestWakeLock() {
@@ -414,6 +501,21 @@
 
     startBtn.addEventListener('click', start);
     stopBtn.addEventListener('click', stop);
+
+    safariLink.href = window.location.href;
+    safariLink.addEventListener('click', (e) => {
+      if (!(isIOS && isStandalone)) return;
+      e.preventDefault();
+      window.open(window.location.href, '_blank');
+    });
+
+    updateStandaloneFallback();
+
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        splash.classList.add('hidden');
+      }, 520);
+    });
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
